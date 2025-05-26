@@ -27,93 +27,20 @@ function draw() {
   background(220);
   image(video, 0, 0, width, height);
 
-  // 印出偵測狀況
-  // 方便看debug直接寫在畫面上
-  fill(0);
-  noStroke();
-  textSize(16);
-  textAlign(LEFT, TOP);
-  text("手部偵測數量: " + handLandmarks.length, 10, 10);
-  text("臉部偵測數量: " + faceLandmarks.length, 10, 30);
-  text("目前手勢: " + currentGesture, 10, 50);
-
   if (faceLandmarks.length > 0) {
     let keypoints = faceLandmarks[0];
-
-    // 畫紅色臉部輪廓
-    stroke('red');
-    strokeWeight(15);
-    noFill();
-    beginShape();
-    for (let i of faceIndexes1) {
-      if (keypoints[i]) vertex(keypoints[i].x * width, keypoints[i].y * height);
-    }
-    endShape();
-
-    // 黃色區域
-    fill('yellow');
-    stroke('red');
-    strokeWeight(1);
-    beginShape();
-    for (let i of faceIndexes2) {
-      if (keypoints[i]) vertex(keypoints[i].x * width, keypoints[i].y * height);
-    }
-    endShape(CLOSE);
-
-    // 綠色中間區域
-    fill('green');
-    stroke('red');
-    strokeWeight(1);
-    beginShape();
-    for (let i of faceIndexes1.concat(faceIndexes2)) {
-      if (keypoints[i]) vertex(keypoints[i].x * width, keypoints[i].y * height);
-    }
-    endShape(CLOSE);
-
-    // 預設鼻子位置
-    if (!circlePos && keypoints[1]) {
-      circlePos = createVector(keypoints[1].x * width, keypoints[1].y * height);
-      console.log("初始圓圈位置設定為鼻子: ", circlePos.x, circlePos.y);
-    }
-
-    detectHandGesture();
-
-    // 根據手勢移動圓圈位置
-    if (currentGesture === "rock" && keypoints[10]) {
-      circlePos.set(keypoints[10].x * width, keypoints[10].y * height);  // 額頭
-      console.log("拳頭 - 移到額頭: ", circlePos.x, circlePos.y);
-    } else if (currentGesture === "paper" && keypoints[33]) {
-      circlePos.set(keypoints[33].x * width, keypoints[33].y * height);  // 左眼 (你說左臉頰，33 是左眼附近)
-      console.log("布 - 移到左眼: ", circlePos.x, circlePos.y);
-    } else if (currentGesture === "scissors" && keypoints[234]) {
-      circlePos.set(keypoints[234].x * width, keypoints[234].y * height); // 右臉頰
-      console.log("剪刀 - 移到右臉頰: ", circlePos.x, circlePos.y);
-    }
-
-    // 確認 circlePos 是否有效，並畫圓圈
-    if (circlePos && !isNaN(circlePos.x) && !isNaN(circlePos.y)) {
+    if (keypoints[1]) {
+      fill(255, 0, 0, 180);
       noStroke();
-      fill(255, 0, 0, 150);
-      ellipse(circlePos.x, circlePos.y, 50, 50);
-    } else {
-      console.log("circlePos 無效，不畫圓");
+      ellipse(keypoints[1].x * width, keypoints[1].y * height, 50, 50);
     }
-  } else {
-    // 臉部沒偵測到就清除circlePos
-    circlePos = null;
   }
 
-  // 畫手部骨架點，幫助你 debug 手勢
-  if (handLandmarks.length > 0) {
-    stroke(0, 0, 255);
-    strokeWeight(5);
-    for (let i = 0; i < handLandmarks[0].length; i++) {
-      let x = handLandmarks[0][i].x * width;
-      let y = handLandmarks[0][i].y * height;
-      point(x, y);
-    }
-  }
+  fill(0);
+  textSize(24);
+  text("手勢: " + currentGesture, 10, 10);
 }
+
 
 function setupFaceMesh() {
   faceMesh = new FaceMesh({
