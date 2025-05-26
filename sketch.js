@@ -1,12 +1,15 @@
 let video;
 let faceMesh;
-let handpose;
-let predictions = [];
-let handPredictions = [];
+let hands;
+let camera;
+
+let faceLandmarks = [];
+let handLandmarks = [];
 
 let circlePos = null;
-let currentGesture = 'none';
+let currentGesture = "none";
 
+// 臉部輪廓點
 let faceIndexes1 = [409,270,269,267,0,37,39,40,185,61,146,91,181,84,17,314,405,321,375,291];
 let faceIndexes2 = [76,77,90,180,85,16,315,404,320,307,306,408,304,303,302,11,72,73,74,184];
 
@@ -16,125 +19,135 @@ function setup() {
   video.size(width, height);
   video.hide();
 
-  faceMesh = ml5.facemesh(video, () => console.log('FaceMesh ready'));
-  faceMesh.on('predict', results => predictions = results);
-
-  handpose = ml5.handpose(video, () => console.log('Handpose ready'));
-  handpose.on('predict', results => handPredictions = results);
+  setupFaceMesh();
+  setupHands();
 }
 
 function draw() {
   background(220);
   image(video, 0, 0, width, height);
 
-  if (predictions.length > 0) {
-    const keypoints = predictions[0].scaledMesh;
+  if (faceLandmarks.length > 0) {
+    let keypoints = faceLandmarks[0];
 
-    // 畫紅線
+    // 畫紅色臉部輪廓
     stroke('red');
     strokeWeight(15);
     noFill();
     beginShape();
     for (let i of faceIndexes1) {
-      if (i < keypoints.length) {
-        const [x, y] = keypoints[i];
-        vertex(x, y);
-      }
+      if (keypoints[i]) vertex(keypoints[i].x * width, keypoints[i].y * height);
     }
     endShape();
 
-    // 畫黃色區域
-    drawFilledArea(faceIndexes2, 'yellow');
+    // 黃色區域
+    fill('yellow');
+    stroke('red');
+    strokeWeight(1);
+    beginShape();
+    for (let i of faceIndexes2) {
+      if (keypoints[i]) vertex(keypoints[i].x * width, keypoints[i].y * height);
+    }
+    endShape(CLOSE);
 
-    // 畫綠色中間區域
-    drawFilledArea(faceIndexes1.concat(faceIndexes2), 'green');
+    // 綠色中間區域
+    fill('green');
+    stroke('red');
+    strokeWeight(1);
+    beginShape();
+    for (let i of faceIndexes1.concat(faceIndexes2)) {
+      if (keypoints[i]) vertex(keypoints[i].x * width, keypoints[i].y * height);
+    }
+    endShape(CLOSE);
 
-    // 偵測手勢
+    // 預設鼻子位置
+    if (!circlePos && keypoints[1]) {
+      circlePos = createVector(keypoints[1].x * width, keypoints[1].y * height);
+    }
+
     detectHandGesture();
 
-    // 設定圓圈位置
-    if (!circlePos) {
-      const [x, y] = keypoints[4]; // 鼻子
-      circlePos = createVector(x, y);
-    } else {
-      if (currentGesture === 'rock') {
-        const [x, y] = keypoints[10]; // 額頭
-        circlePos.set(x, y);
-      } else if (currentGesture === 'paper') {
-        const [x, y] = keypoints[33]; // 左眼
-        circlePos.set(x, y);
-      } else if (currentGesture === 'scissors') {
-        const [x, y] = keypoints[234]; // 左臉頰
-        circlePos.set(x, y);
-      }
+    if (currentGesture === "rock" && keypoints[10]) {
+      circlePos.set(keypoints[10].x * width, keypoints[10].y * height);
+    } else if (currentGesture === "paper" && keypoints[33]) {
+      circlePos.set(keypoints[33].x * width, keypoints[33].y * height);
+    } else if (currentGesture === "scissors" && keypoints[234]) {
+      circlePos.set(keypoints[234].x * width, keypoints[234].y * height);
     }
 
     // 畫圓圈
-    drawCircle();
+    if (circlePos) {
+      noStroke();
+      fill(255, 0, 0, 150);
+      ellipse(circlePos.x, circlePos.y, 50, 50);
+    }
   }
 
-  // 螢幕左上角顯示目前手勢
+  // 顯示目前手勢
   fill(0);
-  noStroke();
   textSize(20);
   textAlign(LEFT, TOP);
-  text("Gesture: " + currentGesture, 10, 10);
+  text("手勢: " + currentGesture, 10, 10);
 }
 
-// 畫指定區域填色
-function drawFilledArea(indexArray, colorFill) {
-  if (predictions.length === 0) return;
-  const keypoints = predictions[0].scaledMesh;
-
-  fill(colorFill);
-  stroke('red');
-  strokeWeight(1);
-  beginShape();
-  for (let i of indexArray) {
-    if (i < keypoints.length) {
-      const [x, y] = keypoints[i];
-      vertex(x, y);
-    }
-  }
-  endShape(CLOSE);
+function setupFaceMesh() {
+  faceMesh = new FaceMesh({
+    locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+  });
+  faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5 });
+  faceMesh.onResults(results => {
+    faceLandmarks = results.multiFaceLandmarks || [];
+  });
 }
 
-// 畫圓圈
-function drawCircle() {
-  if (circlePos) {
-    noStroke();
-    fill(255, 0, 0, 150);
-    ellipse(circlePos.x, circlePos.y, 50, 50);
-  }
+function setupHands() {
+  hands = new Hands({
+    locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.7
+  });
+  hands.onResults(results => {
+    handLandmarks = results.multiHandLandmarks || [];
+  });
+
+  camera = new Camera(video.elt, {
+    onFrame: async () => {
+      await faceMesh.send({ image: video.elt });
+      await hands.send({ image: video.elt });
+    },
+    width: 640,
+    height: 480
+  });
+  camera.start();
 }
 
-// 手勢偵測
 function detectHandGesture() {
-  console.log("目前手勢偵測結果數量：", handPredictions.length);
+  if (handLandmarks.length === 0) {
+    currentGesture = "none";
+    return;
+  }
 
-  if (handPredictions.length > 0) {
-    const hand = handPredictions[0];
-    const fingers = hand.annotations;
-    const tips = ['indexFinger', 'middleFinger', 'ringFinger', 'pinky'];
-    let extended = 0;
+  let landmarks = handLandmarks[0];
+  let extended = 0;
+  const fingers = [8, 12, 16, 20]; // fingertips of index, middle, ring, pinky
 
-    for (let tip of tips) {
-      const tipPos = fingers[tip][3];
-      const basePos = fingers[tip][0];
-      if (tipPos[1] < basePos[1]) extended++; // 如果手指尖在關節上面，代表伸直
+  for (let tip of fingers) {
+    if (landmarks[tip].y < landmarks[tip - 2].y) {
+      extended++;
     }
+  }
 
-    // 根據伸直手指數量判斷手勢
-    if (extended === 0) {
-      currentGesture = 'rock';
-    } else if (extended === 4) {
-      currentGesture = 'paper';
-    } else if (extended === 2) {
-      currentGesture = 'scissors';
-    } else {
-      currentGesture = 'none';
-    }
-
-    console.log("偵測到手勢：", currentGesture);
+  if (extended === 0) {
+    currentGesture = "rock";
+  } else if (extended === 4) {
+    currentGesture = "paper";
+  } else if (extended === 2) {
+    currentGesture = "scissors";
+  } else {
+    currentGesture = "none";
   }
 }
