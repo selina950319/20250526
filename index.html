@@ -2,15 +2,155 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Face & Hand Detection</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="style.css" />
+  <title>Face & Hand Detection with Circle</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0; padding: 0; overflow: hidden;
+      background: #eee;
+    }
+    canvas {
+      display: block;
+      margin: auto;
+    }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.4.2/lib/p5.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 </head>
 <body>
-  <script src="script.js"></script>
+<script>
+let video;
+let faceMesh;
+let hands;
+let camera;
+
+let faceLandmarks = [];
+let handLandmarks = [];
+
+let currentGesture = "none";
+let circlePos = null;
+
+// 臉部關鍵點索引（額頭、左臉頰、右臉頰）
+const foreheadIndex = 10;   // 額頭
+const leftCheekIndex = 234; // 左臉頰
+const rightCheekIndex = 454; // 右臉頰
+
+function setup() {
+  createCanvas(640, 480);
+  video = createCapture(VIDEO);
+  video.size(width, height);
+  video.hide();
+
+  setupFaceMesh();
+  setupHands();
+}
+
+function draw() {
+  background(220);
+  image(video, 0, 0, width, height);
+
+  if (faceLandmarks.length > 0) {
+    let keypoints = faceLandmarks[0];
+
+    // 根據手勢切換圓圈位置
+    if (currentGesture === "rock" && keypoints[foreheadIndex]) {
+      circlePos = createVector(keypoints[foreheadIndex].x * width, keypoints[foreheadIndex].y * height);
+    } else if (currentGesture === "paper" && keypoints[leftCheekIndex]) {
+      circlePos = createVector(keypoints[leftCheekIndex].x * width, keypoints[leftCheekIndex].y * height);
+    } else if (currentGesture === "scissors" && keypoints[rightCheekIndex]) {
+      circlePos = createVector(keypoints[rightCheekIndex].x * width, keypoints[rightCheekIndex].y * height);
+    } else if (!circlePos && keypoints[1]) {
+      // 預設位置在鼻子
+      circlePos = createVector(keypoints[1].x * width, keypoints[1].y * height);
+    }
+
+    // 畫紅色50x50圓圈
+    if (circlePos) {
+      noStroke();
+      fill(255, 0, 0, 180);
+      ellipse(circlePos.x, circlePos.y, 50, 50);
+    }
+  }
+
+  fill(0);
+  textSize(24);
+  textAlign(LEFT, TOP);
+  text("手勢: " + currentGesture, 10, 10);
+}
+
+// MediaPipe FaceMesh設定
+function setupFaceMesh() {
+  faceMesh = new FaceMesh({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+  });
+  faceMesh.setOptions({
+    maxNumFaces: 1,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  });
+  faceMesh.onResults((results) => {
+    faceLandmarks = results.multiFaceLandmarks || [];
+  });
+}
+
+// MediaPipe Hands設定
+function setupHands() {
+  hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.7
+  });
+  hands.onResults((results) => {
+    handLandmarks = results.multiHandLandmarks || [];
+    detectHandGesture();
+  });
+
+  camera = new Camera(video.elt, {
+    onFrame: async () => {
+      await faceMesh.send({image: video.elt});
+      await hands.send({image: video.elt});
+    },
+    width: 640,
+    height: 480
+  });
+  camera.start();
+}
+
+// 根據伸展手指數量判斷手勢
+function detectHandGesture() {
+  if (handLandmarks.length === 0) {
+    currentGesture = "none";
+    return;
+  }
+
+  const landmarks = handLandmarks[0];
+
+  // 四根手指(不含拇指)頂端點索引
+  const fingersTips = [8, 12, 16, 20];
+  let extendedCount = 0;
+
+  // 判斷每根手指是否伸展 (y座標向上為小)
+  for (let tip of fingersTips) {
+    if (landmarks[tip].y < landmarks[tip - 2].y) extendedCount++;
+  }
+
+  if (extendedCount === 0) {
+    currentGesture = "rock";      // 拳頭
+  } else if (extendedCount === 4) {
+    currentGesture = "paper";     // 張開手掌
+  } else if (extendedCount === 2) {
+    currentGesture = "scissors";  // 剪刀 (食指+中指)
+  } else {
+    currentGesture = "none";
+  }
+}
+</script>
 </body>
 </html>
