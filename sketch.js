@@ -30,7 +30,7 @@ function draw() {
   if (predictions.length > 0) {
     const keypoints = predictions[0].scaledMesh;
 
-    // 紅色臉部輪廓
+    // 畫紅線
     stroke('red');
     strokeWeight(15);
     noFill();
@@ -43,16 +43,18 @@ function draw() {
     }
     endShape();
 
-    // 黃色區域
+    // 畫黃色區域
     drawFilledArea(faceIndexes2, 'yellow');
 
-    // 綠色中間區域
+    // 畫綠色中間區域
     drawFilledArea(faceIndexes1.concat(faceIndexes2), 'green');
 
-    // 根據手勢移動圓圈
+    // 偵測手勢
     detectHandGesture();
+
+    // 設定圓圈位置
     if (!circlePos) {
-      const [x, y] = keypoints[4]; // 預設鼻子
+      const [x, y] = keypoints[4]; // 鼻子
       circlePos = createVector(x, y);
     } else {
       if (currentGesture === 'rock') {
@@ -67,20 +69,19 @@ function draw() {
       }
     }
 
+    // 畫圓圈
     drawCircle();
   }
+
+  // 螢幕左上角顯示目前手勢
+  fill(0);
+  noStroke();
+  textSize(20);
+  textAlign(LEFT, TOP);
+  text("Gesture: " + currentGesture, 10, 10);
 }
 
-// 畫圓圈
-function drawCircle() {
-  if (circlePos) {
-    noStroke();
-    fill(255, 0, 0, 150);
-    ellipse(circlePos.x, circlePos.y, 50, 50);
-  }
-}
-
-// 畫指定區域
+// 畫指定區域填色
 function drawFilledArea(indexArray, colorFill) {
   if (predictions.length === 0) return;
   const keypoints = predictions[0].scaledMesh;
@@ -98,8 +99,19 @@ function drawFilledArea(indexArray, colorFill) {
   endShape(CLOSE);
 }
 
-// 偵測手勢：拳頭=rock，張開=paper，2指=scissors
+// 畫圓圈
+function drawCircle() {
+  if (circlePos) {
+    noStroke();
+    fill(255, 0, 0, 150);
+    ellipse(circlePos.x, circlePos.y, 50, 50);
+  }
+}
+
+// 手勢偵測
 function detectHandGesture() {
+  console.log("目前手勢偵測結果數量：", handPredictions.length);
+
   if (handPredictions.length > 0) {
     const hand = handPredictions[0];
     const fingers = hand.annotations;
@@ -109,9 +121,10 @@ function detectHandGesture() {
     for (let tip of tips) {
       const tipPos = fingers[tip][3];
       const basePos = fingers[tip][0];
-      if (tipPos[1] < basePos[1]) extended++;
+      if (tipPos[1] < basePos[1]) extended++; // 如果手指尖在關節上面，代表伸直
     }
 
+    // 根據伸直手指數量判斷手勢
     if (extended === 0) {
       currentGesture = 'rock';
     } else if (extended === 4) {
@@ -122,6 +135,6 @@ function detectHandGesture() {
       currentGesture = 'none';
     }
 
-    console.log('偵測到手勢：', currentGesture);
+    console.log("偵測到手勢：", currentGesture);
   }
 }
