@@ -28,11 +28,12 @@ function draw() {
   image(video, 0, 0, width, height);
 
   if (faceLandmarks.length > 0) {
-    let keypoints = faceLandmarks[0];
-    if (keypoints[1]) {
+    const nose = faceLandmarks[0][1];
+    if (nose) {
       fill(255, 0, 0, 180);
       noStroke();
-      ellipse(keypoints[1].x * width, keypoints[1].y * height, 50, 50);
+      ellipse(nose.x * width, nose.y * height, 50, 50);
+      console.log('鼻子座標', nose.x * width, nose.y * height);
     }
   }
 
@@ -40,6 +41,7 @@ function draw() {
   textSize(24);
   text("手勢: " + currentGesture, 10, 10);
 }
+
 
 
 function setupFaceMesh() {
