@@ -1,153 +1,126 @@
-let video;
-let faceMesh;
-let hands;
-let camera;
+const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
 
-let faceLandmarks = [];
-let handLandmarks = [];
+    let facemesh, predictions = [];
+    let handposeModel, handPredictions = [];
 
-let circlePos = null;
-let currentGesture = "none";
+    let circleX = 320, circleY = 240; // 預設圓形位置
 
-// 臉部輪廓點
-let faceIndexes1 = [409,270,269,267,0,37,39,40,185,61,146,91,181,84,17,314,405,321,375,291];
-let faceIndexes2 = [76,77,90,180,85,16,315,404,320,307,306,408,304,303,302,11,72,73,74,184];
-
-function setup() {
-  createCanvas(640, 480);
-  video = createCapture(VIDEO);
-  video.size(width, height);
-  video.hide();
-
-  setupFaceMesh();
-  setupHands();
-}
-
-function draw() {
-  background(220);
-  image(video, 0, 0, width, height);
-
-  if (faceLandmarks.length > 0) {
-    let keypoints = faceLandmarks[0];
-
-    // 畫紅色臉部輪廓
-    stroke('red');
-    strokeWeight(15);
-    noFill();
-    beginShape();
-    for (let i of faceIndexes1) {
-      if (keypoints[i]) vertex(keypoints[i].x * width, keypoints[i].y * height);
-    }
-    endShape();
-
-    // 黃色區域
-    fill('yellow');
-    stroke('red');
-    strokeWeight(1);
-    beginShape();
-    for (let i of faceIndexes2) {
-      if (keypoints[i]) vertex(keypoints[i].x * width, keypoints[i].y * height);
-    }
-    endShape(CLOSE);
-
-    // 綠色中間區域
-    fill('green');
-    stroke('red');
-    strokeWeight(1);
-    beginShape();
-    for (let i of faceIndexes1.concat(faceIndexes2)) {
-      if (keypoints[i]) vertex(keypoints[i].x * width, keypoints[i].y * height);
-    }
-    endShape(CLOSE);
-
-    // 預設鼻子位置
-    if (!circlePos && keypoints[1]) {
-      circlePos = createVector(keypoints[1].x * width, keypoints[1].y * height);
+    // 載入影片串流
+    async function setupCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      return new Promise(resolve => {
+        video.onloadedmetadata = () => { resolve(video); };
+      });
     }
 
-    detectHandGesture();
+    // 初始化
+    async function init() {
+      await setupCamera();
+      video.play();
 
-    if (currentGesture === "rock" && keypoints[10]) {
-      circlePos.set(keypoints[10].x * width, keypoints[10].y * height);
-    } else if (currentGesture === "paper" && keypoints[33]) {
-      circlePos.set(keypoints[33].x * width, keypoints[33].y * height);
-    } else if (currentGesture === "scissors" && keypoints[234]) {
-      circlePos.set(keypoints[234].x * width, keypoints[234].y * height);
+      facemesh = await ml5.facemesh(video, () => console.log('FaceMesh ready'));
+      facemesh.on('predict', results => {
+        predictions = results;
+      });
+
+      handposeModel = await handpose.load();
+      detectHands();
+      drawLoop();
     }
 
-    // 畫圓圈
-    if (circlePos) {
-      noStroke();
-      fill(255, 0, 0, 150);
-      ellipse(circlePos.x, circlePos.y, 50, 50);
+    // 持續偵測手勢
+    async function detectHands() {
+      handPredictions = await handposeModel.estimateHands(video);
+      setTimeout(detectHands, 100); // 每0.1秒偵測一次
     }
-  }
 
-  // 顯示目前手勢
-  fill(0);
-  textSize(20);
-  textAlign(LEFT, TOP);
-  text("手勢: " + currentGesture, 10, 10);
-}
+    // 簡單手勢判斷（示範，只判斷剪刀、拳頭、布）
+    function recognizeGesture(hand) {
+      if (!hand) return null;
 
-function setupFaceMesh() {
-  faceMesh = new FaceMesh({
-    locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-  });
-  faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5 });
-  faceMesh.onResults(results => {
-    faceLandmarks = results.multiFaceLandmarks || [];
-  });
-}
+      // 拳頭判斷：所有指尖和指根距離近 (大致都彎曲)
+      let curledFingers = 0;
+      const tips = [8, 12, 16, 20]; // 四指指尖編號
+      for (let tip of tips) {
+        const tipPos = hand.annotations.fingerTips ? hand.annotations.fingerTips[tip] : hand.landmarks[tip];
+        const dipPos = hand.landmarks[tip - 2];
+        const dist = Math.hypot(tipPos[0]-dipPos[0], tipPos[1]-dipPos[1]);
+        if (dist < 15) curledFingers++;
+      }
+      if (curledFingers >= 3) return '拳頭';
 
-function setupHands() {
-  hands = new Hands({
-    locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-  });
-  hands.setOptions({
-    maxNumHands: 1,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.7,
-    minTrackingConfidence: 0.7
-  });
-  hands.onResults(results => {
-    handLandmarks = results.multiHandLandmarks || [];
-  });
+      // 布判斷：所有手指伸直（指尖與指根距離遠）
+      let extendedFingers = 0;
+      for (let tip of tips) {
+        const tipPos = hand.landmarks[tip];
+        const mcpPos = hand.landmarks[tip - 3];
+        const dist = Math.hypot(tipPos[0]-mcpPos[0], tipPos[1]-mcpPos[1]);
+        if (dist > 40) extendedFingers++;
+      }
+      if (extendedFingers >= 4) return '布';
 
-  camera = new Camera(video.elt, {
-    onFrame: async () => {
-      await faceMesh.send({ image: video.elt });
-      await hands.send({ image: video.elt });
-    },
-    width: 640,
-    height: 480
-  });
-  camera.start();
-}
+      // 剪刀判斷：食指和中指伸直，其他捲曲
+      // 這裡簡化，只判斷食指、中指距離較遠，其他指尖與指根距離小
+      const indexTip = hand.landmarks[8];
+      const middleTip = hand.landmarks[12];
+      const ringTip = hand.landmarks[16];
+      const pinkyTip = hand.landmarks[20];
+      const ringDip = hand.landmarks[14];
+      const pinkyDip = hand.landmarks[18];
+      const distIndexMiddle = Math.hypot(indexTip[0] - middleTip[0], indexTip[1] - middleTip[1]);
+      const distRing = Math.hypot(ringTip[0] - ringDip[0], ringTip[1] - ringDip[1]);
+      const distPinky = Math.hypot(pinkyTip[0] - pinkyDip[0], pinkyTip[1] - pinkyDip[1]);
 
-function detectHandGesture() {
-  if (handLandmarks.length === 0) {
-    currentGesture = "none";
-    return;
-  }
+      if (distIndexMiddle > 30 && distRing < 20 && distPinky < 20) return '剪刀';
 
-  let landmarks = handLandmarks[0];
-  let extended = 0;
-  const fingers = [8, 12, 16, 20]; // fingertips of index, middle, ring, pinky
-
-  for (let tip of fingers) {
-    if (landmarks[tip].y < landmarks[tip - 2].y) {
-      extended++;
+      return null;
     }
-  }
 
-  if (extended === 0) {
-    currentGesture = "rock";
-  } else if (extended === 4) {
-    currentGesture = "paper";
-  } else if (extended === 2) {
-    currentGesture = "scissors";
-  } else {
-    currentGesture = "none";
-  }
-}
+    // 取得額頭、左臉頰、右臉頰的座標 (用臉部關鍵點，大約位置)
+    function getFacePositions() {
+      if (!predictions.length) return null;
+      const keypoints = predictions[0].scaledMesh;
+
+      return {
+        forehead: keypoints[10],       // 額頭點（大致中間上方）
+        leftCheek: keypoints[234],    // 左臉頰（臉左側）
+        rightCheek: keypoints[454],   // 右臉頰（臉右側）
+      };
+    }
+
+    function drawLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // 取得手勢
+      let gesture = null;
+      if (handPredictions.length > 0) {
+        gesture = recognizeGesture(handPredictions[0]);
+      }
+
+      // 根據手勢改變圓形位置
+      const facePos = getFacePositions();
+      if (gesture && facePos) {
+        if (gesture === '剪刀') {
+          circleX = facePos.forehead[0];
+          circleY = facePos.forehead[1];
+        } else if (gesture === '拳頭') {
+          circleX = facePos.leftCheek[0];
+          circleY = facePos.leftCheek[1];
+        } else if (gesture === '布') {
+          circleX = facePos.rightCheek[0];
+          circleY = facePos.rightCheek[1];
+        }
+      }
+
+      // 畫紅色圓形，50x50大小半徑25
+      ctx.fillStyle = 'red';
+      ctx.beginPath();
+      ctx.arc(circleX, circleY, 25, 0, Math.PI * 2);
+      ctx.fill();
+
+      requestAnimationFrame(drawLoop);
+    }
