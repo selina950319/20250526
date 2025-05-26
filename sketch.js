@@ -27,10 +27,29 @@ function draw() {
   background(220);
   image(video, 0, 0, width, height);
 
-  drawFace();
-  detectHandGesture();
-  drawCircle();
+  if (predictions.length > 0) {
+    const keypoints = predictions[0].scaledMesh;
+
+    // 紅色臉部輪廓線
+    stroke('red');
+    strokeWeight(15);
+    noFill();
+    beginShape();
+    let faceIndexes1 = [409,270,269,267,0,37,39,40,185,61,146,91,181,84,17,314,405,321,375,291];
+    for (let i of faceIndexes1) {
+      let [x, y] = keypoints[i];
+      vertex(x, y);
+    }
+    endShape();
+
+    // 鼻子圓圈
+    const nose = keypoints[4];
+    fill(255, 0, 0);
+    noStroke();
+    ellipse(nose[0], nose[1], 50, 50);
+  }
 }
+
 
 function drawFace() {
   for (let prediction of predictions) {
@@ -47,17 +66,28 @@ function drawFace() {
     }
     endShape();
 
-    // 第二組黃色填色
-    fill('yellow');
-    stroke('red');
-    strokeWeight(1);
-    beginShape();
-    for (let i of faceIndexes2) {
-      const [x, y] = keypoints[i];
-      vertex(x, y);
-    }
-    endShape(CLOSE);
-
+        // 黃色填色區域
+        fill('yellow');
+        stroke('red');
+        strokeWeight(1);
+        beginShape();
+        let faceIndexes2 = [76,77,90,180,85,16,315,404,320,307,306,408,304,303,302,11,72,73,74,184];
+        for (let i of faceIndexes2) {
+          let [x, y] = keypoints[i];
+          vertex(x, y);
+        }
+        endShape(CLOSE);
+    
+        // 綠色中間區域
+        fill('green');
+        beginShape();
+        let allPoints = faceIndexes1.concat(faceIndexes2);
+        for (let i of allPoints) {
+          let [x, y] = keypoints[i];
+          vertex(x, y);
+        }
+        endShape(CLOSE);
+    
     // 中間綠色區域
     fill('green');
     beginShape();
